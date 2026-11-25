@@ -88,6 +88,10 @@ export interface FitReport {
   heldOut: TermSetResult[];
   selectedTerms: string[];
   odds: OddsResult;
+  // Odds variants, tested and dropped on this snapshot (log-loss vs the
+  // TVL-only odds): a growth-sign feature and a young-age-band feature.
+  oddsGrowthLogLoss?: number;
+  oddsYoungLogLoss?: number;
   exclusions: Record<string, number>;
   nBelowFloor: number;
   nBelowFloorPlausible: number;
@@ -138,13 +142,14 @@ export const LAYOUT_FOR_VARIANT: Record<string, 'clean' | 'kpi' | 'dense'> = {
 };
 
 const AS_OF = '2026-11-14';
+const [AS_OF_Y, AS_OF_M, AS_OF_D] = AS_OF.split('-').map(Number);
+const AS_OF_MS = Date.UTC(AS_OF_Y, AS_OF_M - 1, AS_OF_D);
 
 export function ageYears(listedAt: string | null): number | null {
   if (!listedAt) return null;
   const [y, m, d] = listedAt.split('-').map(Number);
   const listed = Date.UTC(y, m - 1, d);
-  const asOf = Date.UTC(2026, 10, 14);
-  return Math.max(0, (asOf - listed) / 86400000 / 365.25);
+  return Math.max(0, (AS_OF_MS - listed) / 86400000 / 365.25);
 }
 
 function clipGrowth(g: number | null): number {
@@ -475,9 +480,12 @@ export function fitValueModel(snapshot: Snapshot): ModelOutput {
   const oddsFeat = (p: Protocol): number[] => [1, Math.log10(p.tvl_usd)];
   const oddsRowsA = oddsRows.filter((_, i) => i % 2 === 0);
   const oddsRowsB = oddsRows.filter((_, i) => i % 2 === 1);
-  const oddsBetaA = fitLogit(oddsRowsA, oddsFeat);
-  const oddsBetaB = fitLogit(oddsRowsB, oddsFeat);
-  const oddsLL = (logLoss(oddsBetaA, oddsRowsB, oddsFeat) + logLoss(oddsBetaB, oddsRowsA, oddsFeat)) / 2;
+  // Held-out log-loss for an odds feature set: fit on half A / test on half B,
+  // swapped, averaged. (D5: the three odds log-loss computations share this shape.)
+  const heldOutLogLoss = (featFn: (p: Protocol) => number[]): number =>
+    (logLoss(fitLogit(oddsRowsA, featFn), oddsRowsB, featFn) +
+      logLoss(fitLogit(oddsRowsB, featFn), oddsRowsA, featFn)) / 2;
+  const oddsLL = heldOutLogLoss(oddsFeat);
   const baseRate = oddsRows.reduce((s, r) => s + r.t, 0) / oddsRows.length;
   const baseLL = -(baseRate * Math.log(baseRate) + (1 - baseRate) * Math.log(1 - baseRate));
   const oddsBeta = fitLogit(oddsRows, oddsFeat);
@@ -487,8 +495,8 @@ export function fitValueModel(snapshot: Snapshot): ModelOutput {
     const a = ageYears(p.listed_at);
     return [1, Math.log10(p.tvl_usd), a !== null && a < 1.9 ? 1 : 0];
   };
-  const llG = (logLoss(fitLogit(oddsRowsA, oddsFeatG), oddsRowsB, oddsFeatG) + logLoss(fitLogit(oddsRowsB, oddsFeatG), oddsRowsA, oddsFeatG)) / 2;
-  const llY = (logLoss(fitLogit(oddsRowsA, oddsFeatY), oddsRowsB, oddsFeatY) + logLoss(fitLogit(oddsRowsB, oddsFeatY), oddsRowsA, oddsFeatY)) / 2;
+  const llG = heldOutLogLoss(oddsFeatG);
+  const llY = heldOutLogLoss(oddsFeatY);
 
   const impliedOf = (p: Protocol): number => {
     const lp = predict(beta, features(p, terms));
@@ -574,8 +582,8 @@ export function fitValueModel(snapshot: Snapshot): ModelOutput {
   };
   // Odds variants, tested and dropped on this snapshot (kept in the report so
   // the reader sees the test, not just the winner).
-  (fit as unknown as Record<string, unknown>).oddsGrowthLogLoss = llG;
-  (fit as unknown as Record<string, unknown>).oddsYoungLogLoss = llY;
+  fit.oddsGrowthLogLoss = llG;
+  fit.oddsYoungLogLoss = llY;
   return { rows, fit, variant: MODEL_VARIANT, layout: LAYOUT_FOR_VARIANT[MODEL_VARIANT] };
 }
 
