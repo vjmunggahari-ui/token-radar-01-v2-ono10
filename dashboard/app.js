@@ -61,6 +61,24 @@
     return (g >= 0 ? '+' : '') + g.toFixed(1) + '%';
   }
 
+  // One odds-formula string for every place it appears (single source of truth):
+  // the intercept/slope always come from the runtime fit, with correct sign spacing.
+  function oddsFormula(label) {
+    return 'sigmoid(' + fit.odds.intercept.toFixed(2) +
+      (fit.odds.slope >= 0 ? ' + ' : ' - ') + Math.abs(fit.odds.slope).toFixed(2) +
+      ' × log10(' + (label || 'TVL') + '))';
+  }
+
+  // Why rank 1 on implied value can have a lower expected value than a lower
+  // rank: the board ranks by stated implied value, while expected value
+  // (implied x odds) can rise down the ranks because smaller protocols have
+  // higher launch odds. The top-EV row is computed from the rows at runtime.
+  function evNote(r) {
+    var top = rows.reduce(function (a, b) { return b.expected_value_usd > a.expected_value_usd ? b : a; });
+    if (top.slug === r.slug) return 'Board ranks by stated implied value. This row also has the highest expected value on the board (' + money(r.expected_value_usd) + ').';
+    return 'Board ranks by stated implied value, not by expected value. The highest expected value on the board is ' + top.name + ' (rank ' + top.rank + ', ' + money(top.expected_value_usd) + ') — expected value can rise down the ranks because smaller protocols have higher launch odds (' + pct(top.odds, 0) + ' vs ' + pct(r.odds, 0) + ' here).';
+  }
+
   // Header model line + KPI strip.
   // Header model line — the board's actual fitted formula, growth term included when used.
   var modelTxt = 'Model: log10(mcap) = ' + fit.valueIntercept.toFixed(4) + ' + ' + fit.valueSlope.toFixed(4) + ' × log10(TVL)';
@@ -68,8 +86,7 @@
     modelTxt += ' + ' + fit.growthCoef.toFixed(4) + ' × growthSign';
   }
   modelTxt += '  ·  fitted on ' + fit.nTrading + ' trading protocols  ·  held-out RMSE ' +
-    variantHeldOut.meanRmse.toFixed(4) + '  ·  odds: sigmoid(' + fit.odds.intercept.toFixed(2) +
-    ' ' + fit.odds.slope.toFixed(2) + ' × log10(TVL))';
+    variantHeldOut.meanRmse.toFixed(4) + '  ·  odds: ' + oddsFormula();
   $('#model-line').textContent = modelTxt;
   var kpis = [
     ['Coverage', fit.watchlistCovered + ' / 40', 'watchlist protocols ranked'],
@@ -212,8 +229,7 @@
       ') = 10^(' + td.intercept.toFixed(4) + ' + ' + td.tvl_term.toFixed(4) +
       (td.growth_term !== 0 ? ' + ' + td.growth_term.toFixed(4) : '') +
       ') = 10^' + logIv.toFixed(4) + ' = ' + money(r.implied_value_usd);
-    var oddsLine = 'odds = sigmoid(' + fit.odds.intercept.toFixed(2) + ' ' + fit.odds.slope.toFixed(2) +
-      ' × log10(' + moneyShort(r.tvl_usd) + ')) = ' + pct(r.odds, 1);
+    var oddsLine = 'odds = ' + oddsFormula(moneyShort(r.tvl_usd)) + ' = ' + pct(r.odds, 1);
     $('#detail').innerHTML =
       '<h2>' + r.name + ' <span class="wl">' + (r.watchlist ? '★ watchlist' : '') + '</span></h2>' +
       '<p class="meta">Rank ' + r.rank + ' of ' + rows.length + ' · ' + (r.category || 'no category') +
@@ -230,6 +246,7 @@
       '</div>' +
       '<h3>How the number is made</h3>' +
       '<div class="decomp">' + decomp + '<br>' + oddsLine + '</div>' +
+      '<p class="note">' + evNote(r) + '</p>' +
       '<h3>Farm plan — 5 steps, starter sizes</h3>' +
       '<ol>' + r.farm_steps.map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ol>';
   }
@@ -277,7 +294,7 @@
       '<div class="card"><h3>How the implied values spread</h3>' + hist +
       '<p class="note">200 rows, log scale. Most protocols cluster at $4–12M; the watchlist top sits far above.</p></div>' +
       '<div class="card"><h3>Launch odds vs TVL — the fitted curve</h3>' + curve +
-      '<p class="note">Every row sits on one fitted curve: odds = sigmoid(10.38 − 1.47 × log10(TVL)). Small TVL, higher odds.</p></div>';
+      '<p class="note">Every row sits on one fitted curve: odds = ' + oddsFormula() + '. Small TVL, higher odds.</p></div>';
   }
 
   function renderMethod() {
