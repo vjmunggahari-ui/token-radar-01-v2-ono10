@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Token Launch Radar — fitted implied values for pre-token protocols</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Token Launch Radar</h1>
+    <p class="sub">Which pre-token protocol is worth farming next? Ranked by fitted implied launch value — not by a hand-picked list.</p>
+    <p class="model" id="model-line"></p>
+  </div>
+</header>
+<main class="wrap">
+  <section class="kpis" id="kpis" aria-label="Key figures"></section>
+  <section class="selfcheck" id="selfcheck" aria-label="Self-checks"></section>
+  <section class="spread" id="spread" aria-label="Distribution"></section>
+  <section class="controls" aria-label="Filters">
+    <input id="q" type="search" placeholder="Search name or slug…" aria-label="Search">
+    <select id="cat" aria-label="Category"><option value="">All categories</option></select>
+    <select id="chain" aria-label="Chain"><option value="">All chains</option></select>
+    <select id="band" aria-label="TVL band">
+      <option value="">All TVL bands</option>
+      <option value="big">TVL ≥ $500M</option>
+      <option value="mid">$100M – $500M</option>
+      <option value="small">$50M – $100M</option>
+      <option value="below">Below $50M (extras)</option>
+    </select>
+    <span class="count" id="count"></span>
+  </section>
+  <section class="board">
+    <table id="board">
+      <thead><tr id="headrow"></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+  <section class="detail" id="detail" aria-label="Protocol detail"></section>
+  <section class="method" id="method" aria-label="Methodology"></section>
+  <footer>
+    <p>Every implied value is an <strong>estimate</strong> fitted from the snapshot's own figures (median error 87% on held-out trading protocols). The board ranks pre-token protocols only: protocols whose token already trades are the training set, never the ranking. A protocol "records no token" in the snapshot; that is a fact about the data, not a promise that it will launch one. Farm plans are starter sizes — never invest more than you can lose.</p>
+    <p>Snapshot: DefiLlama, as of 2026-11-14, 758 protocols, watchlist 40, floor $50,000,000. Built by an AI agent for make.fun's token-radar-01 bounty.</p>
+  </footer>
+</main>
+<script src="../data.js"></script>
+<script src="method.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
