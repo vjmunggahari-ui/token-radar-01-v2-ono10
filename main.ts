@@ -27,8 +27,9 @@ if (!approx(fit.refIntercept, 3.0247, 0.01)) throw new Error(`value intercept dr
 if (!approx(fit.refSlope, 0.5223, 0.005)) throw new Error(`value slope drifted: ${fit.refSlope}`);
 if (!approx(fit.odds.intercept, 10.3838, 0.05)) throw new Error(`odds intercept drifted: ${fit.odds.intercept}`);
 if (!approx(fit.odds.slope, -1.4737, 0.05)) throw new Error(`odds slope drifted: ${fit.odds.slope}`);
-const tvlOnly = fit.heldOut.find((h) => h.name === 'TVL only');
-if (!tvlOnly || !approx(tvlOnly.meanRmse, 0.9046, 0.005)) throw new Error(`held-out RMSE drifted: ${tvlOnly?.meanRmse}`);
+const variantHeldOut = fit.heldOut.find((h) => JSON.stringify(h.terms) === JSON.stringify(fit.selectedTerms));
+if (!variantHeldOut || !approx(variantHeldOut.meanRmse, 0.9046, 0.005)) throw new Error(`held-out RMSE drifted: ${variantHeldOut?.meanRmse}`);
+if (!variantHeldOut.kept) throw new Error(`selected term set is not the held-out winner: ${variantHeldOut.name}`);
 if (!approx(fit.odds.heldOutLogLoss, 0.5471, 0.01)) throw new Error(`odds log-loss drifted: ${fit.odds.heldOutLogLoss}`);
 
 // Board gates: fail loudly instead of shipping a bad board.
@@ -58,7 +59,7 @@ const board = {
   model: {
     value: `log10(mcap) = ${fit.valueIntercept.toFixed(4)} + ${fit.valueSlope.toFixed(4)} * log10(TVL)`,
     value_coef: fit.valueCoef,
-    held_out_rmse_mean: tvlOnly.meanRmse,
+    held_out_rmse_mean: variantHeldOut.meanRmse,
     odds: `P(mcap/TVL >= 0.5) = sigmoid(${fit.odds.intercept.toFixed(4)} + ${fit.odds.slope.toFixed(4)} * log10(TVL))`,
     odds_held_out_logloss: fit.odds.heldOutLogLoss,
     odds_base_logloss: fit.odds.baseLogLoss,
@@ -86,7 +87,7 @@ const dossier = buildDossier(out, { text_max_bytes: 65536 });
 writeFileSync(join(out, 'dossier.json'), dossier);
 
 console.log(`variant ${variant} (${layout}) — rows ${rows.length}, watchlist ${fit.watchlistCovered}/40`);
-console.log(`value: log10(mcap) = ${fit.valueIntercept.toFixed(4)} + ${fit.valueSlope.toFixed(4)}*log10(TVL), held-out RMSE ${tvlOnly.meanRmse.toFixed(4)}`);
+console.log(`value: log10(mcap) = ${fit.valueIntercept.toFixed(4)} + ${fit.valueSlope.toFixed(4)}*log10(TVL), held-out RMSE ${variantHeldOut.meanRmse.toFixed(4)}`);
 console.log(`odds: sigmoid(${fit.odds.intercept.toFixed(4)} ${fit.odds.slope.toFixed(4)}*log10(TVL)), held-out log-loss ${fit.odds.heldOutLogLoss.toFixed(4)} vs base ${fit.odds.baseLogLoss.toFixed(4)}`);
 console.log(`implied range $${fit.valueMax.toLocaleString('en-US')} .. $${fit.valueMin.toLocaleString('en-US')}, median $${fit.medianImplied.toLocaleString('en-US')}`);
 console.log(`dossier bytes: ${dossier.byteLength}`);

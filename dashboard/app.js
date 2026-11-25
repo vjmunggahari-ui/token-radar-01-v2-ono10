@@ -8,6 +8,41 @@
   var M = window.METHOD;
   var rows = D.rows;
   var fit = D.fit;
+
+  // The variant's own held-out entry. heldOut[0] is only the right row when the
+  // selected term set is ['tvl']; match on terms (order-insensitive) so variant B
+  // reads its own RMSE instead of the TVL-only row's. A missing entry means the
+  // data is inconsistent — fail loudly rather than show another variant's number.
+  function sameTerms(a, b) {
+    return a.length === b.length && a.every(function (t) { return b.indexOf(t) >= 0; });
+  }
+  var variantHeldOut = fit.heldOut.filter(function (h) { return sameTerms(h.terms, fit.selectedTerms); })[0];
+  if (!variantHeldOut) throw new Error('no held-out entry for selected terms: ' + JSON.stringify(fit.selectedTerms));
+
+  // Exclusion counts, rendered from the runtime fit (single source of truth).
+  // Fixed reason order matches the methodology prose; only nonzero reasons are
+  // listed, so a reason that never fires leaves no trace.
+  var EXCL_LABELS = {
+    'category': 'category (Bridge / Canonical Bridge / Liquid Staking / Liquid Restaking / Restaked BTC / CEX)',
+    'version-marker': 'version markers such as "v2" or "3.0" in the name',
+    'wrapped/staked-word': 'wrapped/staked/staking words',
+    'stem': 'names that repeat a trading protocol\'s name stem',
+    'exchange-name': 'exchange names (Binance, Coinbase, Bybit, Kraken, Bitget, OKX, Bitfinex, Gemini)',
+    'first-word': 'names whose first word matches a trading protocol name'
+  };
+  var EXCL_ORDER = ['category', 'version-marker', 'wrapped/staked-word', 'stem', 'exchange-name', 'first-word'];
+  function exclusionsText() {
+    var total = 0, parts = [];
+    EXCL_ORDER.forEach(function (r) {
+      var n = fit.exclusions[r] || 0;
+      if (n > 0) { total += n; parts.push(EXCL_LABELS[r] + ' ' + n); }
+    });
+    return 'Of the ' + fit.nBelowFloor + ' pre-token protocols below the floor, ' + total +
+      ' were excluded by mechanical rules: ' + parts.join('; ') +
+      '. That leaves ' + fit.nBelowFloorPlausible + ' eligible; the top 160 by TVL fill the board. ' +
+      'The rules use only the snapshot\'s own fields (category, name) and the trading set\'s name stems.';
+  }
+
   document.body.classList.add('layout-' + D.layout);
 
   function $(s) { return document.querySelector(s); }
@@ -33,14 +68,14 @@
     modelTxt += ' + ' + fit.growthCoef.toFixed(4) + ' × growthSign';
   }
   modelTxt += '  ·  fitted on ' + fit.nTrading + ' trading protocols  ·  held-out RMSE ' +
-    fit.heldOut[0].meanRmse.toFixed(4) + '  ·  odds: sigmoid(' + fit.odds.intercept.toFixed(2) +
+    variantHeldOut.meanRmse.toFixed(4) + '  ·  odds: sigmoid(' + fit.odds.intercept.toFixed(2) +
     ' ' + fit.odds.slope.toFixed(2) + ' × log10(TVL))';
   $('#model-line').textContent = modelTxt;
   var kpis = [
     ['Coverage', fit.watchlistCovered + ' / 40', 'watchlist protocols ranked'],
     ['Board rows', String(fit.boardRows), '40 watchlist + 160 below-floor'],
     ['Median implied', money(fit.medianImplied), 'estimate, not a price'],
-    ['Held-out RMSE', fit.heldOut[0].meanRmse.toFixed(4), 'log10, two blind halves'],
+    ['Held-out RMSE', variantHeldOut.meanRmse.toFixed(4), 'log10, two blind halves'],
     ['Farm plans', (fit.boardRows * 5).toLocaleString('en-US'), '5 concrete steps each'],
     ['Median odds', pct(fit.medianOdds, 0), 'of realising ≥ 0.5× TVL as mcap'],
   ];
@@ -56,7 +91,7 @@
     fit.boardRows + ' rows',
     'values non-increasing',
     'farm steps 5 per row',
-    'held-out RMSE ' + fit.heldOut[0].meanRmse.toFixed(4),
+    'held-out RMSE ' + variantHeldOut.meanRmse.toFixed(4),
     'odds log-loss ' + fit.odds.heldOutLogLoss.toFixed(4) + ' vs base ' + fit.odds.baseLogLoss.toFixed(4),
     'implied values are estimates (median error 87%)',
   ];
@@ -251,7 +286,7 @@
       ' protocols whose token already trades, with log10(mcap) as the target. Nothing about the value is a hardcoded list of names. Every candidate term was fitted on one blind half of the trading protocols and tested on the other, then swapped; a term is kept only if it improves that held-out error.</p>' +
       '<p><strong>Value model:</strong> log10(mcap) = ' + fit.valueIntercept.toFixed(4) + ' + ' + fit.valueSlope.toFixed(4) +
       ' × log10(TVL), i.e. implied value = ' + Math.round(fit.valueCoef) + ' × TVL^' + fit.valueSlope.toFixed(4) +
-      '. Held-out log10 RMSE ' + fit.heldOut[0].meanRmse.toFixed(4) + ', median absolute error on market cap 87%. ' +
+      '. Held-out log10 RMSE ' + variantHeldOut.meanRmse.toFixed(4) + ', median absolute error on market cap 87%. ' +
       'The naive baseline (mcap = TVL × median ratio 0.2227) scores 0.9887 in-sample — the fitted model beats it, and it is still a rough estimate.</p>' +
       '<p><strong>Odds model:</strong> P(mcap/TVL ≥ 0.5) = sigmoid(' + fit.odds.intercept.toFixed(4) + ' + ' +
       fit.odds.slope.toFixed(4) + ' × log10(TVL)). Held-out log-loss ' + fit.odds.heldOutLogLoss.toFixed(4) +
@@ -260,12 +295,18 @@
       '<h3>Held-out test — every candidate term set (two blind halves)</h3>' +
       '<table><thead><tr><th>Term set</th><th class="num">Held-out RMSE</th><th>Verdict</th><th>Why</th></tr></thead><tbody>' +
       M.termSets.map(function (t) {
-        return '<tr><td>' + t.name + '</td><td class="num">' + t.rmse + '</td><td class="' +
-          (t.kept ? 'kept' : 'dropped') + '">' + (t.kept ? 'KEPT' : 'dropped') + '</td><td>' + t.why + '</td></tr>';
+        // Numbers + verdict come from the runtime fit (single source of truth);
+        // the static file carries only the prose 'why'. Rows with no held-out
+        // entry (category calibration, naive baseline) keep their static numbers.
+        var h = fit.heldOut.filter(function (x) { return x.name === t.name; })[0];
+        var rmse = h ? h.meanRmse.toFixed(4) + ' (' + h.rmseAB.toFixed(4) + ' / ' + h.rmseBA.toFixed(4) + ')' : t.rmse;
+        var kept = h ? h.kept : t.kept;
+        return '<tr><td>' + t.name + '</td><td class="num">' + rmse + '</td><td class="' +
+          (kept ? 'kept' : 'dropped') + '">' + (kept ? 'KEPT' : 'dropped') + '</td><td>' + t.why + '</td></tr>';
       }).join('') + '</tbody></table>' +
       '<h3>What was dropped, and why</h3><p>' + M.dropped + '</p>' +
       '<h3>Board construction</h3><p>' + M.construction + '</p>' +
-      '<h3>Exclusions from the below-floor extras</h3><p>' + M.exclusions + '</p>' +
+      '<h3>Exclusions from the below-floor extras</h3><p>' + exclusionsText() + '</p>' +
       '<h3>What this radar does not do</h3><p>' + M.limits + '</p>';
     $('#method').innerHTML = h;
   }

@@ -34,4 +34,4 @@ Node 22, stdlib only, no network. Writes `board.json`, `data.js`, `dashboard/`, 
 - `lib/model.ts` — the fit (OLS + two-blind-half term selection + logistic odds), board builder, farm-plan generator.
 - `dashboard/` — the page: sortable/filterable board, detail view per protocol, KPI strip, self-check strip, distribution charts, methodology panel.
 - `screenshots/` — three real renders of the dashboard (board, detail, filtered).
-- `board.json` — 200 rows, all 40 watchlist protocols covered, values non-increasing by rank.
+- `board.json` — generated into `$MAKEFUN_OUTPUT_DIR` at runtime (not in this repo): 200 rows, all 40 watchlist protocols covered, values non-increasing by rank.
